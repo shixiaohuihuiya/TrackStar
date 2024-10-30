@@ -10,10 +10,9 @@ import asyncio
 import aiohttp
 from aiohttp import ClientSession
 from tenacity import retry, stop_after_attempt, wait_exponential
-from baseopensdk import BaseClient, JSON
-from baseopensdk.api.base.v1 import BatchCreateAppTableRecordRequest
 from dotenv import load_dotenv, find_dotenv
 import os
+from feishu_bitable import feishu_bitable
 # 加载 .env 文件中的环境变量
 load_dotenv(find_dotenv())
 
@@ -26,6 +25,7 @@ access_token = os.getenv("ACCESS_TOKEN")
 feishu_webhook_url = os.getenv("FEISHU_WEBHOOK")
 personal_base_token = os.environ['PERSONAL_BASE_TOKEN']
 feishu_bitable_url = os.getenv("FEISHU_BITABLE_URL")
+feishu_bitable = feishu_bitable(personal_base_token, feishu_bitable_url)
 
 # 修改这些常量
 FIRST_RUN_MAX_PAGES = 4  # 首次运行时的最大页数
@@ -264,9 +264,11 @@ def send_message_to_feishu(new_stargazers, reached_max_pages):
     today_date = datetime.now().strftime("%Y年%m月%d日")
     
     feishu_bitable_message = ""
+    view_name = "最近一日"
+    new_url = feishu_bitable_url.replace(feishu_bitable_url.split("view=")[1].split("&")[0], feishu_bitable.get_one_view_id(view_name))
     if "base/" in feishu_bitable_url:
         # 从 API URL 提取实际的多维表格 URL
-        feishu_bitable_message = f"\n\n[点击此处查看完整的 Stargazers 数据]({feishu_bitable_url})"
+        feishu_bitable_message = f"\n\n[点击此处查看完整的 Stargazers 数据]({new_url})"
     else:
         feishu_bitable_message = "\n\n\n飞书多维表格未配置正确!"
 
@@ -300,21 +302,11 @@ def send_message_to_feishu(new_stargazers, reached_max_pages):
 
 def  batch_add_records_to_bitable(fields):
     """
-    新增多条数据到飞书多维表格
+    新增多条数据到飞书多维表
 
     :param fields: dict, 包含要插入的字段名和值
     :return: None
     """
-
-    # app_token
-    feishu_bitable_app_token = feishu_bitable_url.split('/')[4].split('?')[0]
-    print(feishu_bitable_app_token)
-    # table_id
-    table_start_index = feishu_bitable_url.find('table=') + len('table=')
-    base_end_index = feishu_bitable_url.find('&')
-    feishu_bitable_table_id = feishu_bitable_url[table_start_index:base_end_index]
-    print(feishu_bitable_table_id)
-
 
     records = []
     for user in fields:
@@ -332,80 +324,56 @@ def  batch_add_records_to_bitable(fields):
                 '评分': str(user['grade']),
                 '创建时间': int(datetime.strptime(user['created_at'], "%Y-%m-%dT%H:%M:%SZ").timestamp() * 1000),
                 '更新时间': int(datetime.strptime(user['updated_at'], "%Y-%m-%dT%H:%M:%SZ").timestamp() * 1000),
-                '收集时间': int(datetime.now().timestamp() * 1000)  
+                '收集时间': int(datetime.now().timestamp() * 1000)
             }
         })
-
-     # 构建客户端
-    client: BaseClient = BaseClient.builder() \
-        .app_token(feishu_bitable_app_token) \
-        .personal_base_token(personal_base_token) \
-        .build()
-
-    # 构造请求对象
-    request = BatchCreateAppTableRecordRequest.builder() \
-        .table_id(feishu_bitable_table_id) \
-        .request_body({
-            "records": records
-        }) \
-        .build()
-    
-    print(request)
-
-    # 发起请求以新增记录
-    response = client.base.v1.app_table_record.create(request)
-
-    # 检查响应并打印结果
-    if response.code == 0:
-        print("记录新增成功！")
-        print(JSON.marshal(response))
-        return True
-    else:
-        print("新增记录失败")
-        print(JSON.marshal(response))
+        print("records：：：：：：：：：：", records)
+    asyncio.run(feishu_bitable.batch_create_records(records))
 
 # 修改主函数 track_stargazers
 def track_stargazers():
-    try:
-        logging.info("开始获取stargazers...")
+    # 判断多维表格是否初始化成功
+    if not feishu_bitable.is_view_exist("最近一日"):
+        logging.error("多维表格未初始化成功")
+        logging.info("开始初始化多维表格")
+        feishu_bitable.init_view()
     
-        previous_stargazers = read_previous_stargazers('stargazers.json')
-        logging.info(f"previous_stargazers: {previous_stargazers}")
+    logging.info("开始获取stargazers...")
+    
+    previous_stargazers = read_previous_stargazers('stargazers.json')
+    logging.info(f"previous_stargazers: {previous_stargazers}")
 
-        current_stargazers, reached_max_pages = fetch_stargazers(previous_stargazers)
-        new_stargazers_usernames = find_new_stargazers(previous_stargazers, current_stargazers)
-        logging.info(f"new_stargazers_usernames: {new_stargazers_usernames}")
+    current_stargazers, reached_max_pages = fetch_stargazers(previous_stargazers)
+    new_stargazers_usernames = find_new_stargazers(previous_stargazers, current_stargazers)
+    logging.info(f"new_stargazers_usernames: {new_stargazers_usernames}")
 
 
-        # 使用异步方法获取新增stargazers的详细信息
-        new_stargazers_details = asyncio.run(fetch_multiple_user_details(new_stargazers_usernames))
-        # 根据分数进行排序 分数 = 关注者数 * 1 + 关注数 * 10 + 公开仓库数 * 2
-        sorted_stargazers = sorted(
+    # 使用异步方法获取新增stargazers的详细信息
+    new_stargazers_details = asyncio.run(fetch_multiple_user_details(new_stargazers_usernames))
+    # 根据分数进行排序 分数 = 关注者数 * 1 + 关注数 * 10 + 公开仓库数 * 2
+    sorted_stargazers = sorted(
             [{**user, 'grade': user['followers'] * 1 + user['following'] * 10 + user['public_repos'] * 2} for user in new_stargazers_details],
             key=lambda user: user['grade'],
             reverse=True
-        )
-        logging.info(f"new_stargazers_details: {sorted_stargazers}")
+    )
+    logging.info(f"new_stargazers_details: {sorted_stargazers}")
 
-        save_stargazers_to_file(current_stargazers, 'stargazers.json')
+    save_stargazers_to_file(current_stargazers, 'stargazers.json')
 
-        if new_stargazers_details:
-            logging.info(f"新增的stargazers: {sorted_stargazers}")
+    if new_stargazers_details:
+        logging.info(f"新增的stargazers: {sorted_stargazers}")
+        
+        # 批量添加到飞书多维表格
+        batch_add_records_to_bitable(sorted_stargazers)
+        
+        # 发送飞书消息
+        send_message_to_feishu(sorted_stargazers, reached_max_pages)
             
-            # 批量添加到飞书多维表格
-            success = batch_add_records_to_bitable(sorted_stargazers)
-            if not success:
-                logging.error("批量添加数据到飞书多维表格失败")
-            
-            # 发送飞书消息
-            send_message_to_feishu(sorted_stargazers, reached_max_pages)
-            
-            save_stargazers_details_to_csv(new_stargazers_details, 'new.csv')
-            update_total_csv(new_stargazers_details, 'total.csv')
-        else:
-            logging.info("没有新的stargazers")
-    except Exception as e:
-        logging.error(f"发生错误: {e}")
+        save_stargazers_details_to_csv(new_stargazers_details, 'new.csv')
+        update_total_csv(new_stargazers_details, 'total.csv')
+    else:
+        logging.info("没有新的stargazers")
+   
 
 # 立即执行一次
 if __name__ == "__main__":

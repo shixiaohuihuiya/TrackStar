@@ -2,13 +2,14 @@
 
 ![截图](https://i.imgur.com/a42BgPi.png)
 
-这个仓库包含一个 GitHub Actions 工作流，用于跟踪和记录仓库的 Stargazers（加星用户），并将每日新增关注者发送到指定的飞书群。
+这个仓库包含一个 GitHub Actions 工作流，用于跟踪和记录仓库的 Stargazers（加星用户），并将每日新增关注者发送到指定的飞书群，并且将数据写入到多维表格。
 
 ## 功能特点
 
 - 自动跟踪仓库的 Stargazers。
 - 将 Stargazers 数据保存到 `stargazers.json` 文件中。
 - 每日新增关注者监控，并发送到指定的飞书群。
+- 可以自动初始化飞书多维表，并且每日新增的数据写飞书多维表格。
 - 自动定时执行：每天 UTC 时间 3:00（北京时间 11:00）自动运行。
 - 生成每日报告：每次运行时生成新增 Stargazers（new.csv）和总 Stargazers（total.csv）的表格。
 
@@ -19,6 +20,8 @@
 - `ACCESS_TOKEN`：你的 GitHub 个人访问令牌（需要有 `repo` 权限）。
 - `TARGET_REPO`: GitHub 仓库名，格式为 `owner/repo`。
 - `FEISHU_WEBHOOK`：飞书群的 Webhook URL。
+- `PERSONAL_BASE_TOKEN`: 飞书多维表格的token。
+- `FEISHU_BITABLE_URL`: 飞书多维表格链接。
 
 你可以参考 `example.env` 文件来配置这些环境变量。
 
@@ -27,12 +30,20 @@
 - 自动跟踪仓库的 Stargazers。
 - 将 Stargazers 数据保存到 `stargazers.json` 文件中。
 - 每日新增关注者监控，并发送到指定的飞书群。
+- 将新增的数据保存到飞书多维表格。
 
 ## 使用方法
+
+#### github
 
 1. 将 `.github/workflows/star.yml` 文件添加到你的仓库中。
 2. 确保 `star.py` 脚本文件在你的仓库根目录中。
 3. 进入 GitHub 仓库页面，点击 `Actions` 标签，选择 `Run Track Stars` 工作流，点击 `Run workflow` 按钮手动触发工作流。
+
+#### 飞书多维表格
+
+ 	1. `飞书APP`创建你的多维表格，获取其中的多维表格链接 `feishu.cn/base `格式   例如：`https://www.feishu.cn/base/xx?table=xx&view=xx`
+ 	2. 获取的多维表格`token`，选择`插件`，页面右边插件的右下角的`自定义插件`，页面的最上面有`获取授权码`点击获取授权的`token`。
 
 ## 文件说明
 
