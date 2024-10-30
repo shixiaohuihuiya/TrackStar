@@ -176,9 +176,6 @@ class feishu_bitable():
     
     # 批量新增记录
     def batch_create_records(self, records):
-        print(111111111111111111111111)
-      
-
         batch_create_app_table_record_request_body = BatchCreateAppTableRecordRequestBody().builder() \
             .records(records) \
             .build()
